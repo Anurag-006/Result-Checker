@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Report Card - {{ student.name }}</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; padding: 20px; }
+        .report-box { max-width: 900px; margin: auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .header { border-bottom: 2px solid #3498db; margin-bottom: 20px; padding-bottom: 10px; }
+        .student-info { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 1.1em; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background: #3498db; color: white; }
+        .footer { margin-top: 20px; text-align: right; font-size: 1.2em; font-weight: bold; color: #2c3e50; }
+        .pass { color: green; font-weight: bold; }
+        .fail { color: red; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="report-box">
+        <div class="header">
+            <h2>Detailed Examination Results</h2>
+        </div>
+        <div class="student-info">
+            <div><strong>Name:</strong> {{ student.name }}</div>
+            <div><strong>Roll No:</strong> {{ student.roll }}</div>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Code</th>
+                    <th>Subject Title</th>
+                    <th>Grade</th>
+                    <th>Result</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sub in student.subjects %}
+                <tr>
+                    <td>{{ sub.code }}</td>
+                    <td>{{ sub.title }}</td>
+                    <td>{{ sub.grade }}</td>
+                    <td class="{{ 'pass' if sub.result == 'PASS' else 'fail' }}">{{ sub.result }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="footer">
+            Semester SGPA: {{ student.sgpa }}
+        </div>
+    </div>
+</body>
+</html>

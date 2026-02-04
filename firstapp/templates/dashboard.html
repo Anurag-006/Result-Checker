@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Class Results</title>
+    <style>
+        body { font-family: sans-serif; background: #f0f2f5; padding: 40px; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #1a73e8; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #f8f9fa; color: #5f6368; }
+        .high-score { color: #188038; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Class Results Leaderboard</h1>
+        <table>
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Roll Number</th>
+                    <th>Name</th>
+                    <th>SGPA</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for student in students %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ student.roll }}</td>
+                        <td>
+                            <a href="/report/{{ student.roll }}" target="_blank" style="color: #1a73e8; text-decoration: none; font-weight: bold;">
+                                {{ student.name }}
+                            </a>
+                        </td>
+                        <td class="high-score">{{ student.sgpa }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
