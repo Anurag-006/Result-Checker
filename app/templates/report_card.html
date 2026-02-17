@@ -25,13 +25,13 @@
             <div><strong>Name:</strong> {{ student.name }}</div>
             <div><strong>Roll No:</strong> {{ student.roll }}</div>
         </div>
-        <table>
+<table>
             <thead>
                 <tr>
                     <th>Code</th>
                     <th>Subject Title</th>
-                    <th>Grade</th>
-                    <th>Result</th>
+                    <th>Letter Grade</th>
+                    <th>Grade Points</th> <th>Result</th>
                 </tr>
             </thead>
             <tbody>
@@ -39,8 +39,8 @@
                 <tr>
                     <td>{{ sub.code }}</td>
                     <td>{{ sub.title }}</td>
-                    <td>{{ sub.grade }}</td>
-                    <td class="{{ 'pass' if sub.result == 'PASS' else 'fail' }}">{{ sub.result }}</td>
+                    <td style="font-weight: bold;">{{ sub.grade }}</td>
+                    <td>{{ sub.points }}</td> <td class="{{ 'pass' if sub.result == 'PASS' else 'fail' }}">{{ sub.result }}</td>
                 </tr>
                 {% endfor %}
             </tbody>

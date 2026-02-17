@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Friends Leaderboard</title>
+    <style>
+        body { font-family: sans-serif; background: #f0f2f5; padding: 20px; margin: 0; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        h1 { color: #1a73e8; text-align: center; margin-bottom: 5px; }
+        .nav-links { text-align: center; margin-bottom: 25px; }
+        .nav-links a { color: #5f6368; text-decoration: none; font-weight: bold; }
+        .nav-links a:hover { color: #1a73e8; }
+        
+        .input-section { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+        select { padding: 10px; border-radius: 5px; border: 1px solid #ccc; font-weight: bold; max-width: 100%; }
+        textarea { padding: 12px; border-radius: 8px; border: 1px solid #ccc; width: 100%; box-sizing: border-box; font-family: monospace; resize: vertical; }
+        .fetch-btn { background-color: #1a73e8; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: background 0.3s; }
+        .fetch-btn:hover { background-color: #1557b0; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #f8f9fa; color: #5f6368; }
+        .high-score { color: #188038; font-weight: bold; }
+        .withheld { color: #d93025; font-style: italic; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Squad Leaderboard</h1>
+        <div class="nav-links">
+            <a href="/">← Back to Class Results</a>
+        </div>
+
+        <form action="/friends" method="POST" class="input-section">
+            <label for="exam"><strong>Select Exam:</strong></label>
+            <select name="exam" id="exam">
+                {% for exam_id, exam_name in available_exams.items() %}
+                    <option value="{{ exam_id }}" {% if exam_id == selected_exam %}selected{% endif %}>
+                        {{ exam_name }}
+                    </option>
+                {% endfor %}
+            </select>
+
+            <label for="roll_numbers"><strong>Enter Roll Numbers:</strong> (separated by commas or spaces)</label>
+            <textarea id="roll_numbers" name="roll_numbers" rows="4" placeholder="e.g. 23071A0501, 23071A0502">{{ saved_input }}</textarea>
+            <button type="submit" class="fetch-btn">Fetch Friends' Results</button>
+        </form>
+
+        {% if students %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Roll Number</th>
+                    <th>Name</th>
+                    <th>SGPA</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for student in students %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ student.roll }}</td>
+                        <td>
+                            {% if student.name == "Result Withheld" %}
+                                <span class="withheld">{{ student.name }}</span>
+                            {% else %}
+                                <a href="/report/{{ student.roll }}?exam={{ selected_exam }}" target="_blank" style="color: #1a73e8; text-decoration: none; font-weight: bold;">
+                                    {{ student.name }}
+                                </a>
+                            {% endif %}
+                        </td>
+                        <td class="{% if student.sgpa == 'Withheld' %}withheld{% else %}high-score{% endif %}">
+                            {{ student.sgpa }}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+
+    <script>
+        const textArea = document.getElementById('roll_numbers');
+        if (textArea.value.trim() === "") {
+            const savedFriends = localStorage.getItem('myFriendsList');
+            if (savedFriends) textArea.value = savedFriends;
+        }
+        textArea.addEventListener('input', function() {
+            localStorage.setItem('myFriendsList', textArea.value);
+        });
+    </script>
+</body>
+</html>

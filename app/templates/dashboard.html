@@ -2,45 +2,39 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Class Results</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Class Results Leaderboard</title>
     <style>
-        body { font-family: sans-serif; background: #f0f2f5; padding: 40px; }
-        .container { max-width: 800px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
-        
+        body { font-family: sans-serif; background: #f0f2f5; padding: 20px; margin: 0; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
         .header-section { display: flex; flex-direction: column; align-items: center; margin-bottom: 25px; }
         h1 { color: #1a73e8; margin-bottom: 20px; text-align: center; }
-        
         .controls { display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 15px; }
-        .dropdown-group { display: flex; gap: 10px; }
-        select { padding: 10px; border-radius: 5px; border: 1px solid #ccc; font-weight: bold; }
-        
+        .dropdown-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        select { padding: 10px; border-radius: 5px; border: 1px solid #ccc; font-weight: bold; max-width: 300px; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
         th { background-color: #f8f9fa; color: #5f6368; }
-        
         .high-score { color: #188038; font-weight: bold; }
         .withheld { color: #d93025; font-style: italic; }
-        
-        .export-btn {
-            background-color: #188038;
-            color: white;
-            padding: 10px 20px;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: bold;
-            transition: background 0.3s;
-        }
+        .export-btn { background-color: #188038; color: white; padding: 10px 20px; text-decoration: none; border-radius: 8px; font-weight: bold; transition: background 0.3s; }
         .export-btn:hover { background-color: #13642c; }
+        .friends-link { color: #1a73e8; font-weight: bold; text-decoration: none; display: inline-block; margin-top: 15px; }
     </style>
 </head>
 <body>
     <div class="container">
-        
         <div class="header-section">
             <h1>Class Results Leaderboard</h1>
-            
             <div class="controls">
                 <form action="/" method="GET" class="dropdown-group">
+                    <select name="exam" onchange="this.form.submit()">
+                        {% for exam_id, exam_name in available_exams.items() %}
+                            <option value="{{ exam_id }}" {% if exam_id == selected_exam %}selected{% endif %}>
+                                {{ exam_name }}
+                            </option>
+                        {% endfor %}
+                    </select>
                     <select name="section" onchange="this.form.submit()">
                         {% for section in sections %}
                             <option value="{{ section }}" {% if section == selected_section %}selected{% endif %}>
@@ -48,17 +42,16 @@
                             </option>
                         {% endfor %}
                     </select>
-                    
-                    <select name="section" onchange="this.form.submit()">
+                    <select name="year" onchange="this.form.submit()">
                         <option value="25" {% if selected_year == '25' %}selected{% endif %}>1st Year (25 Batch)</option>
                         <option value="24" {% if selected_year == '24' %}selected{% endif %}>2nd Year (24 Batch)</option>
                         <option value="23" {% if selected_year == '23' %}selected{% endif %}>3rd Year (23 Batch)</option>
                         <option value="22" {% if selected_year == '22' %}selected{% endif %}>4th Year (22 Batch)</option>
                     </select>
                 </form>
-
-                <a href="/export?section={{ selected_section }}&year={{ selected_year }}" class="export-btn">Export to CSV</a>
+                <a href="/export?section={{ selected_section }}&year={{ selected_year }}&exam={{ selected_exam }}" class="export-btn">Export to CSV</a>
             </div>
+            <a href="/friends?exam={{ selected_exam }}" class="friends-link">🌟 View Friends Leaderboard</a>
         </div>
 
         <table>
@@ -79,7 +72,7 @@
                             {% if student.name == "Result Withheld" %}
                                 <span class="withheld">{{ student.name }}</span>
                             {% else %}
-                                <a href="/report/{{ student.roll }}" target="_blank" style="color: #1a73e8; text-decoration: none; font-weight: bold;">
+                                <a href="/report/{{ student.roll }}?exam={{ selected_exam }}" target="_blank" style="color: #1a73e8; text-decoration: none; font-weight: bold;">
                                     {{ student.name }}
                                 </a>
                             {% endif %}
@@ -91,7 +84,6 @@
                 {% endfor %}
             </tbody>
         </table>
-
     </div>
 </body>
 </html>

@@ -4,14 +4,18 @@ from bs4 import BeautifulSoup
 import io
 import csv
 import concurrent.futures
+import re
+from functools import partial
+import json
 
 app = Flask(__name__)
-
-EXAM_ID = "7463"
 BASE_URL = "https://vnrvjietexams.net/eduprime3exam/Results/Results"
 
-# Maps EXACTLY to the individual sheets in your Excel file
-# We define the start and end indices so it limits the scraping to just that section.
+# In-Memory Cache to prevent overloading the college server
+CACHE = {}
+AVAILABLE_EXAMS = {}
+
+# Exact section mapping limits based on your Excel sheets
 SECTION_INFO = {
     "AE": {"code": "24", "reg_start": 1, "reg_end": 66, "lat_start": 1, "lat_end": 6},
     "AIDS": {"code": "72", "reg_start": 1, "reg_end": 66, "lat_start": 1, "lat_end": 6},
@@ -45,8 +49,66 @@ SECTION_INFO = {
     "ME-2": {"code": "03", "reg_start": 65, "reg_end": 128, "lat_start": 7, "lat_end": 12}
 }
 
+import urllib3
+# Add this line at the top of your file to hide annoying SSL warnings in your terminal
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+def fetch_active_exams():
+    """Extracts Exam IDs directly from the hidden JSON script on the college site."""
+    global AVAILABLE_EXAMS
+    if AVAILABLE_EXAMS:
+        return AVAILABLE_EXAMS
+        
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        }
+        main_url = "https://vnrvjietexams.net/EduPrime3Exam/Results"
+        response = requests.get(main_url, headers=headers, timeout=10, verify=False)
+        
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            exams = {}
+            
+            # Search through all script tags on the page
+            for script in soup.find_all('script'):
+                if script.string and 'var data =' in script.string:
+                    # Isolate the JSON part from the script text
+                    json_text = script.string.split('var data =')[1].strip()
+                    
+                    # Remove the trailing semicolon so it becomes valid JSON
+                    if json_text.endswith(';'):
+                        json_text = json_text[:-1]
+                        
+                    # Parse the JSON string into a Python Dictionary
+                    exam_list = json.loads(json_text)
+                    
+                    # Loop through every exam in their database
+                    for exam in exam_list:
+                        exam_id = str(exam.get('ExamId'))
+                        exam_name = exam.get('ExamName')
+                        
+                        # Only grab B.Tech exams
+                        if exam_id and exam_name and "B.TECH" in exam_name.upper():
+                            exams[exam_id] = exam_name
+            
+            if exams:
+                AVAILABLE_EXAMS = exams
+                print(f"✅ Successfully loaded {len(exams)} dynamic exams from JSON!")
+                return exams
+            else:
+                print("❌ Found the script, but couldn't extract the exams.")
+        else:
+            print(f"❌ Server Error: {response.status_code}")
+            
+    except Exception as e:
+        print(f"❌ Exception occurred: {e}")
+        
+    return {"7463": "Default Exam (Failed to load dynamic list)"}
+
 def get_sequence_strings(start_idx, end_idx):
-    """Generates standard university sequences skipping I, L, O, and S for a specific slice."""
+    """Generates alphanumeric sequences skipping I, L, O, and S."""
     valid_chars = "ABCDEFGHJKMNPQRTUVWXYZ"
     seq = []
     for i in range(start_idx, end_idx + 1):
@@ -60,19 +122,18 @@ def get_sequence_strings(start_idx, end_idx):
     return seq
 
 def generate_roll_numbers(year_prefix, section_key):
-    """Generates all roll combinations for a specific section."""
     rolls = []
     section = SECTION_INFO.get(section_key)
     if not section: return []
 
     branch_code = section["code"]
     
-    # 1. Generate Regular Students for this section
+    # Regular
     reg_seq = get_sequence_strings(section["reg_start"], section["reg_end"])
     for seq in reg_seq:
         rolls.append(f"{year_prefix}071A{branch_code}{seq}")
     
-    # 2. Generate Lateral Entry Students for this section
+    # Lateral Entry
     lat_prefix = str(int(year_prefix) + 1)
     lat_seq = get_sequence_strings(section["lat_start"], section["lat_end"])
     for seq in lat_seq:
@@ -80,30 +141,31 @@ def generate_roll_numbers(year_prefix, section_key):
     
     return rolls
 
-def get_student_data(htno):
-    """Helper to scrape data for a single student."""
+def get_student_data(htno, exam_id):
+    # Standard 10-point scale mapping
+    GRADE_POINTS = {
+        'O': 10, 'A+': 9, 'A': 8, 
+        'B+': 7, 'B': 6, 'C': 5, 
+        'F': 0, 'AB': 0, 'ABSENT': 0
+    }
+    
     try:
-        response = requests.get(BASE_URL, params={'htno': htno, 'examId': EXAM_ID}, timeout=5)
+        response = requests.get(BASE_URL, params={'htno': htno, 'examId': exam_id}, timeout=5)
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            # --- NEW: Check for withheld BEFORE checking for the name table ---
             page_text = soup.get_text().lower()
             if "withheld" in page_text:
                 return {'roll': htno, 'name': "Result Withheld", 'sgpa': "Withheld", 'subjects': []}
 
-            name_tag = soup.find(text=lambda t: "Student Name" in t)
-            
-            # If the name tag is missing and it's NOT withheld, the student doesn't exist.
-            if not name_tag: 
-                return None 
+            name_tag = soup.find(string=lambda t: t and "Student Name" in t)
+            if not name_tag: return None 
             
             name = name_tag.parent.find_next('td').get_text(strip=True).replace(":", "")
-            
             if name == "Unknown" or not name:
                 return {'roll': htno, 'name': "Result Withheld", 'sgpa': "Withheld", 'subjects': []}
 
-            sgpa_tag = soup.find(text=lambda t: "SGPA" in t)
+            sgpa_tag = soup.find(string=lambda t: t and "SGPA" in t)
             sgpa = sgpa_tag.parent.find_next('td').get_text(strip=True).replace(":", "") if sgpa_tag else "0.00"
             if not sgpa: sgpa = "0.00"
 
@@ -114,10 +176,15 @@ def get_student_data(htno):
                 for row in rows:
                     cols = row.find_all('td')
                     if len(cols) >= 6:
+                        grade_letter = cols[4].text.strip()
+                        # Get the numeric point, default to "-" if it's a weird character
+                        numeric_point = GRADE_POINTS.get(grade_letter.upper(), "-")
+                        
                         subjects.append({
                             'code': cols[1].text.strip(),
                             'title': cols[2].text.strip(),
-                            'grade': cols[4].text.strip(),
+                            'grade': grade_letter,
+                            'points': numeric_point,  # <-- NEW: Added points here!
                             'result': cols[-1].text.strip()
                         })
             return {'roll': htno, 'name': name, 'sgpa': sgpa, 'subjects': subjects}
@@ -125,53 +192,101 @@ def get_student_data(htno):
         pass 
     return None
 
-def fetch_all_students(roll_numbers):
-    """Uses Multi-Threading to scrape results almost instantly."""
+def fetch_all_students(roll_numbers, exam_id):
     results = []
+    fetch_func = partial(get_student_data, exam_id=exam_id)
+    
     with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
-        for data in executor.map(get_student_data, roll_numbers):
-            # We now keep ALL valid data objects, including withheld ones
+        for data in executor.map(fetch_func, roll_numbers):
             if data: 
                 results.append(data)
     return results
+
+def safe_sgpa(student):
+    """Sort helper to ensure 'Withheld' goes to the bottom."""
+    try: return float(student['sgpa'])
+    except: return -1.0 
 
 @app.route('/')
 def index():
     selected_section = request.args.get('section', 'CSBS') 
     year = request.args.get('year', '23')
     
-    roll_numbers = generate_roll_numbers(year, selected_section)
-    class_results = fetch_all_students(roll_numbers)
+    available_exams = fetch_active_exams()
+    default_exam = list(available_exams.keys())[0] if available_exams else "7463"
+    selected_exam = request.args.get('exam', default_exam)
     
-    # Safe sorting: Puts Withheld students at the bottom (treated as -1 SGPA)
-    def safe_sgpa(student):
-        try:
-            return float(student['sgpa'])
-        except (ValueError, TypeError):
-            return -1.0 # Puts "Withheld" or "N/A" at the bottom of the list
-            
-    class_results.sort(key=safe_sgpa, reverse=True)
+    cache_key = f"{selected_section}_{year}_{selected_exam}"
     
+    if cache_key in CACHE:
+        class_results = CACHE[cache_key]
+    else:
+        roll_numbers = generate_roll_numbers(year, selected_section)
+        class_results = fetch_all_students(roll_numbers, selected_exam)
+        class_results.sort(key=safe_sgpa, reverse=True)
+        CACHE[cache_key] = class_results
+        
     return render_template('dashboard.html', 
                            students=class_results, 
                            sections=SECTION_INFO.keys(), 
                            selected_section=selected_section,
-                           selected_year=year)
+                           selected_year=year,
+                           available_exams=available_exams,
+                           selected_exam=selected_exam)
+
+@app.route('/friends', methods=['GET', 'POST'])
+def friends_leaderboard():
+    rolls_input = request.form.get('roll_numbers', '')
+    class_results = []
+    
+    available_exams = fetch_active_exams()
+    default_exam = list(available_exams.keys())[0] if available_exams else "7463"
+    
+    # --- FIXED: Check the POST form data first, then GET args, then default ---
+    selected_exam = request.form.get('exam') or request.args.get('exam') or default_exam
+    
+    if rolls_input:
+        raw_rolls = re.findall(r'[a-zA-Z0-9]{10}', rolls_input)
+        valid_rolls = list(set([r.upper() for r in raw_rolls]))
+        
+        if valid_rolls:
+            class_results = fetch_all_students(valid_rolls, selected_exam)
+            class_results.sort(key=safe_sgpa, reverse=True)
+
+    return render_template('friends.html', 
+                           students=class_results, 
+                           saved_input=rolls_input,
+                           available_exams=available_exams,
+                           selected_exam=selected_exam)
 
 @app.route('/report/<roll_no>')
 def report_card(roll_no):
-    student = get_student_data(roll_no)
+    available_exams = fetch_active_exams()
+    default_exam = list(available_exams.keys())[0] if available_exams else "7463"
+    selected_exam = request.args.get('exam', default_exam)
+    
+    student = get_student_data(roll_no, selected_exam)
     return render_template('report_card.html', student=student)
 
 @app.route('/export')
 def export_csv():
     selected_section = request.args.get('section', 'CSBS')
     year = request.args.get('year', '23')
-    roll_numbers = generate_roll_numbers(year, selected_section)
     
-    all_student_data = fetch_all_students(roll_numbers)
-    all_subject_titles = set()
+    available_exams = fetch_active_exams()
+    default_exam = list(available_exams.keys())[0] if available_exams else "7463"
+    selected_exam = request.args.get('exam', default_exam)
+    
+    cache_key = f"{selected_section}_{year}_{selected_exam}"
+    
+    if cache_key in CACHE:
+        all_student_data = CACHE[cache_key]
+    else:
+        roll_numbers = generate_roll_numbers(year, selected_section)
+        all_student_data = fetch_all_students(roll_numbers, selected_exam)
+        all_student_data.sort(key=safe_sgpa, reverse=True)
 
+    all_subject_titles = set()
     for data in all_student_data:
         if data['subjects']:
             for sub in data['subjects']:
@@ -188,11 +303,15 @@ def export_csv():
     for student in all_student_data:
         grade_map = {sub['title']: sub['grade'] for sub in student['subjects']}
         row = [student['roll'], student['name']]
+        
         for subject in sorted_subjects:
             row.append(grade_map.get(subject, "N/A"))
             
-        failed = any(sub['result'] == 'FAIL' for sub in student['subjects'])
-        verdict = "FAIL" if failed else "PASS"
+        if student['name'] == "Result Withheld":
+            verdict = "WITHHELD"
+        else:
+            failed = any(sub['result'] == 'FAIL' for sub in student['subjects'])
+            verdict = "FAIL" if failed else "PASS"
         
         row.extend([student['sgpa'], verdict])
         writer.writerow(row)
@@ -204,4 +323,5 @@ def export_csv():
     )
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Using 0.0.0.0 so anyone on the same Wi-Fi can access it using your IP Address
+    app.run(host='127.0.0.1', port=5000, debug=True)
